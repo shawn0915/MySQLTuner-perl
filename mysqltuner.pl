@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# mysqltuner.pl - Version 1.7.10
+# mysqltuner.pl - Version 1.7.13
 # High Performance MySQL Tuning Script
 # Copyright (C) 2006-2018 Major Hayden - major@mhtx.net
 #
@@ -56,7 +56,7 @@ $Data::Dumper::Pair = " : ";
 #use Env;
 
 # Set up a few variables for use in the script
-my $tunerversion = "1.7.10";
+my $tunerversion = "1.7.13";
 my ( @adjvars, @generalrec );
 
 # Set defaults
@@ -86,6 +86,8 @@ my %opt = (
     "maxportallowed" => 0,
     "outputfile"     => 0,
     "dbstat"         => 0,
+    "tbstat"         => 0,
+    "notbstat"       => 0,
     "idxstat"        => 0,
     "sysstat"        => 0,
     "pfstat"         => 0,
@@ -122,7 +124,8 @@ GetOptions(
     'password=s',      'pfstat',
     'passenv=s',       'userenv=s',
     'defaults-file=s', 'ssl-ca=s',
-    'color'
+    'color',	       'tbstat',
+    'notbstat'
   )
   or pod2usage(
     -exitval  => 1,
@@ -175,13 +178,16 @@ $basic_password_files = "/usr/share/mysqltuner/basic_passwords.txt"
 if ( $opt{verbose} ) {
     $opt{checkversion} = 1;    #Check for updates to MySQLTuner
     $opt{dbstat}       = 1;    #Print database information
+    $opt{tbstat}       = 1;    #Print database information
     $opt{idxstat}      = 1;    #Print index information
     $opt{sysstat}      = 1;    #Print index information
     $opt{buffers}      = 1;    #Print global and per-thread buffer values
     $opt{pfstat}       = 1;    #Print performance schema info.
     $opt{cvefile} = 'vulnerabilities.csv';    #CVE File for vulnerability checks
 }
-
+$opt{nocolor} = 1 if defined($opt{outputfile});
+$opt{tbstat}  = 1 if ($opt{notbstat} != 0);    # Don't Print database information
+    
 # for RPM distributions
 $opt{cvefile} = "/usr/share/mysqltuner/vulnerabilities.csv"
   unless ( defined $opt{cvefile} and -f "$opt{cvefile}" );
@@ -607,7 +613,7 @@ sub update_tuner_version {
         badprint "Couldn't update MySQLTuner script";
     }
 
-    exit 0;
+    #exit 0;
 }
 
 sub compare_tuner_version {
@@ -956,6 +962,13 @@ sub select_array {
     return @result;
 }
 
+sub human_size {
+    my( $size, $n ) =( shift, 0 );
+    ++$n and $size /= 1024 until $size < 1024;
+    return sprintf "%.2f %s", 
+          $size, ( qw[ bytes KB MB GB ] )[ $n ];
+}
+
 # MySQL Request one
 sub select_one {
     my $req = shift;
@@ -1073,7 +1086,8 @@ sub get_all_vars {
 
     $myvar{'have_galera'} = "NO";
     if ( defined( $myvar{'wsrep_provider_options'} )
-        && $myvar{'wsrep_provider_options'} ne "" )
+        && $myvar{'wsrep_provider_options'} ne "" 
+        && $myvar{'wsrep_on'} ne "OFF" )
     {
         $myvar{'have_galera'} = "YES";
         debugprint "Galera options: " . $myvar{'wsrep_provider_options'};
@@ -1494,7 +1508,7 @@ sub infocmd_tab {
 
 sub infocmd_one {
     my $cmd    = "@_";
-    my @result = `$cmd`;
+    my @result = `$cmd 2>&1`;
     @result = remove_cr @result;
     return join ', ', @result;
 }
@@ -1585,6 +1599,7 @@ sub get_system_info {
     infoprint "Network Cards         : ";
     infocmd_tab "ifconfig| grep -A1 mtu";
     infoprint "Internal IP           : " . infocmd_one "hostname -I";
+    $result{'Network'}{'Internal Ip'} = `ifconfig| grep -A1 mtu`;
     my $httpcli = get_http_cli();
     infoprint "HTTP client found: $httpcli" if defined $httpcli;
 
@@ -1613,7 +1628,9 @@ sub get_system_info {
     infocmd_tab "top -n 1 -b | grep 'load average:'";
     $result{'OS'}{'Load Average'} = `top -n 1 -b | grep 'load average:'`;
 
-#infoprint "System Uptime Days/(HH:MM) : `uptime | awk '{print $3,$4}' | cut -f1 -d,`";
+    infoprint "System Uptime         : ";
+    infocmd_tab "uptime";
+    $result{'OS'}{'Uptime'}= `uptime`;
 }
 
 sub system_recommendations {
@@ -1692,6 +1709,12 @@ sub system_recommendations {
 
 sub security_recommendations {
     subheaderprint "Security Recommendations";
+ 
+    if ( mysql_version_eq(8) ) {
+        infoprint "Skipped due to unsupported feature for MySQL 8";
+        return;
+    }
+    #exit 0;
     if ( $opt{skippassword} eq 1 ) {
         infoprint "Skipped due to --skippassword option";
         return;
@@ -1935,8 +1958,8 @@ sub validate_mysql_version {
 # Checks if MySQL version is equal to (major, minor, micro)
 sub mysql_version_eq {
     my ( $maj, $min, $mic ) = @_;
-    $min ||= 0;
-    $mic ||= 0;
+    return int($mysqlvermajor) == int($maj) if ( !defined($min) && !defined($mic));
+    return int($mysqlvermajor) == int($maj)&& int($mysqlverminor) == int($min)  if ( !defined($mic));
     return ( int($mysqlvermajor) == int($maj)
           && int($mysqlverminor) == int($min)
           && int($mysqlvermicro) == int($mic) );
@@ -2878,10 +2901,13 @@ sub mysql_stats {
 
     # Query cache
     if ( !mysql_version_ge(4) ) {
-
         # MySQL versions < 4.01 don't support query caching
         push( @generalrec,
             "Upgrade MySQL to version 4+ to utilize query caching" );
+    }
+    elsif (mysql_version_eq(8)) {
+        infoprint "Query cache have been removed in MySQL 8";
+        #return;
     }
     elsif ( $myvar{'query_cache_size'} < 1
         and $myvar{'query_cache_type'} eq "OFF" )
@@ -3044,17 +3070,20 @@ sub mysql_stats {
     }
 
     # Thread cache
-    if ( $myvar{'thread_cache_size'} eq 0 ) {
-        badprint "Thread cache is disabled";
-        push( @generalrec, "Set thread_cache_size to 4 as a starting value" );
-        push( @adjvars,    "thread_cache_size (start at 4)" );
+    if ( defined( $myvar{'thread_handling'} )
+        and $myvar{'thread_handling'} eq 'pool-of-threads' )
+    {
+        # https://www.percona.com/doc/percona-server/LATEST/performance/threadpool.html
+        # When thread pool is enabled, the value of the thread_cache_size variable
+        # is ignored. The Threads_cached status variable contains 0 in this case.
+        infoprint "Thread cache not used with thread_handling=pool-of-threads";
     }
     else {
-        if ( defined( $myvar{'thread_handling'} )
-            and $myvar{'thread_handling'} eq 'pools-of-threads' )
-        {
-            infoprint "Thread cache hit rate: not used with pool-of-threads";
-        }
+        if ( $myvar{'thread_cache_size'} eq 0 ) {
+            badprint "Thread cache is disabled";
+            push( @generalrec, "Set thread_cache_size to 4 as a starting value" );
+            push( @adjvars,    "thread_cache_size (start at 4)" );
+         }
         else {
             if ( $mycalc{'thread_cache_hit_rate'} <= 50 ) {
                 badprint
@@ -3103,6 +3132,9 @@ sub mysql_stats {
                     "Read this before increasing "
                   . $table_cache_var
                   . " over 64: http://bit.ly/1mi7c4C" );
+            push( @generalrec,
+                    "Read this before increasing for MariaDB"
+                  . " https://mariadb.com/kb/en/library/optimizing-table_open_cache/");
             push( @generalrec,
 "This is MyISAM only table_cache scalability problem, InnoDB not affected."
             );
@@ -5139,7 +5171,8 @@ sub mariadb_galera {
     }
     infoprint "GCache is using "
       . hr_bytes_rnd( get_wsrep_option('gcache.mem_size') );
-    my @primaryKeysNbTables = select_array(
+	#my @primaryKeysNbTables=(); 
+   my @primaryKeysNbTables = select_array(
         "Select CONCAT(c.table_schema,CONCAT('.', c.table_name))
 from information_schema.columns c
 join information_schema.tables t using (TABLE_SCHEMA, TABLE_NAME)
@@ -5149,13 +5182,15 @@ group by c.table_schema,c.table_name
 having sum(if(c.column_key in ('PRI','UNI'), 1,0)) = 0"
     );
 
-    infoprint "CPU core detected: ". (cpu_cores);
-    if (   get_wsrep_option('wsrep_slave_threads') > (cpu_cores) * 4
-        or get_wsrep_option('wsrep_slave_threads') < (cpu_cores) * 3 )
+
+    infoprint "CPU core detected  : ". (cpu_cores);
+    infoprint "wsrep_slave_threads: ". get_wsrep_option('wsrep_slave_threads');
+    if (   get_wsrep_option('wsrep_slave_threads') > ((cpu_cores) * 4)
+        or get_wsrep_option('wsrep_slave_threads') < ((cpu_cores) * 2) )
     {
         badprint
 "wsrep_slave_threads is not equal to 2, 3 or 4 times number of CPU(s)";
-        push @adjvars, "wsrep_slave_threads = ".(cpu_cores * 4);
+        push @adjvars, "wsrep_slave_threads = ".((cpu_cores) * 4);
     }
     else {
         goodprint
@@ -5699,6 +5734,19 @@ sub mysql_innodb {
     $result{'Calculations'} = {%mycalc};
 }
 
+sub check_metadata_perf {
+    subheaderprint "Analysis Performance Metrics";
+    infoprint "innodb_stats_on_metadata: ".$myvar{'innodb_stats_on_metadata'};
+    if ($myvar{'innodb_stats_on_metadata'} eq 'ON') {
+        badprint "Stat are updated during querying INFORMATION_SCHEMA.";
+        push @adjvars, "SET innodb_stats_on_metadata = OFF";
+        #Disabling innodb_stats_on_metadata 
+        select_one("SET GLOBAL innodb_stats_on_metadata = OFF;");
+        return 1;
+    }
+    goodprint "No stat updates during querying INFORMATION_SCHEMA.";
+    return 0 
+}
 # Recommendations for Database metrics
 sub mysql_databases {
     return if ( $opt{dbstat} == 0 );
@@ -5877,7 +5925,7 @@ sub mysql_databases {
 
 # Recommendations for database columns
 sub mysql_tables {
-    return if ( $opt{dbstat} == 0 );
+    return if ( $opt{tbstat} == 0 );
 
     subheaderprint "Table Column Metrics";
     unless ( mysql_version_ge( 5, 5 ) ) {
@@ -6105,7 +6153,6 @@ if ( $opt{'template'} ne 0 ) {
     $templateModel = file2string( $opt{'template'} );
 }
 else {
-
     # DEFAULT REPORT TEMPLATE
     $templateModel = <<'END_TEMPLATE';
 <!DOCTYPE html>
@@ -6127,21 +6174,17 @@ END_TEMPLATE
 }
 
 sub dump_result {
-    if ( $opt{'debug'} ) {
-        debugprint Dumper( \%result );
-    }
-
+    debugprint Dumper( \%result ) if ( $opt{'debug'} );
     debugprint "HTML REPORT: $opt{'reportfile'}";
 
     if ( $opt{'reportfile'} ne 0 ) {
         eval { require Text::Template };
         if ($@) {
             badprint "Text::Template Module is needed.";
-            exit 1;
+            die "Text::Template Module is needed.";
         }
 
         my $vars = { 'data' => Dumper( \%result ) };
-
         my $template;
         {
             no warnings 'once';
@@ -6151,21 +6194,33 @@ sub dump_result {
                 SOURCE  => $templateModel
             ) or die "Couldn't construct template: $Text::Template::ERROR";
         }
+
         open my $fh, q(>), $opt{'reportfile'}
           or die
-"Unable to open $opt{'reportfile'} in write mode. please check permissions for this file or directory";
+    "Unable to open $opt{'reportfile'} in write mode. please check permissions for this file or directory";
         $template->fill_in( HASH => $vars, OUTPUT => $fh );
         close $fh;
     }
+
     if ( $opt{'json'} ne 0 ) {
         eval { require JSON };
-        if ($@) {
+        if ($@) {   
             print "$bad JSON Module is needed.\n";
-            exit 1;
+            return 1;
         }
+
         my $json = JSON->new->allow_nonref;
-        print $json->utf8(1)->pretty( ( $opt{'prettyjson'} ? 1 : 0 ) )
-          ->encode( \%result );
+        print $json->utf8(1)->pretty( ( $opt{'prettyjson'} ? 1 : 0 ) )->encode( \%result );
+
+
+        if ( $opt{'outputfile'} ne 0 ) {
+            unlink $opt{'outputfile'} if (-e $opt{'outputfile'});
+            open my $fh, q(>), $opt{'outputfile'}
+              or die
+    "Unable to open $opt{'outputfile'} in write mode. please check permissions for this file or directory";
+              print $fh  $json->utf8(1)->pretty( ( $opt{'prettyjson'} ? 1 : 0 ) )->encode( \%result );
+              close $fh;
+        }
     }
 }
 
@@ -6175,9 +6230,7 @@ sub which {
     my @path_array  = split /:/, $ENV{'PATH'};
 
     for my $path (@path_array) {
-        if ( -x "$path/$prog_name" ) {
-            return "$path/$prog_name";
-        }
+        return "$path/$prog_name" if ( -x "$path/$prog_name" );
     }
 
     return 0;
@@ -6203,6 +6256,8 @@ check_architecture;        # Suggest 64-bit upgrade
 system_recommendations;    # avoid to many service on the same host
 log_file_recommendations;  # check log file content
 check_storage_engines;     # Show enabled storage engines
+
+check_metadata_perf;       # Show parameter impacting performance during analysis 
 mysql_databases;           # Show informations about databases
 mysql_tables;              # Show informations about table column
 
@@ -6218,9 +6273,9 @@ mysql_innodb;              # Print InnoDB stats
 mariadb_ariadb;            # Print MariaDB AriaDB stats
 mariadb_tokudb;            # Print MariaDB Tokudb stats
 mariadb_xtradb;            # Print MariaDB XtraDB stats
-mariadb_rockdb;            # Print MariaDB RockDB stats
-mariadb_spider;            # Print MariaDB Spider stats
-mariadb_connect;           # Print MariaDB Connect stats
+#mariadb_rockdb;            # Print MariaDB RockDB stats
+#mariadb_spider;            # Print MariaDB Spider stats
+#mariadb_connect;           # Print MariaDB Connect stats
 mariadb_galera;            # Print MariaDB Galera Cluster stats
 get_replication_status;    # Print replication info
 make_recommendations;      # Make recommendations based on stats
@@ -6240,7 +6295,7 @@ __END__
 
 =head1 NAME
 
- MySQLTuner 1.7.10 - MySQL High Performance Tuning Script
+ MySQLTuner 1.7.13 - MySQL High Performance Tuning Script
 
 =head1 IMPORTANT USAGE GUIDELINES
 
@@ -6282,6 +6337,8 @@ You must provide the remote server's total memory when connecting to other serve
  --noinfo                    Remove informational responses
  --debug                     Print debug information
  --dbstat                    Print database information
+ --tbstat                    Print table information
+ --notbstat                  Don't Print table information
  --idxstat                   Print index information
  --sysstat                   Print system information
  --pfstat                    Print Performance schema

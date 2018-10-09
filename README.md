@@ -30,21 +30,21 @@ MySQLTuner needs you:
 ## Stargazers over time
 
 [![Stargazers over time](https://starcharts.herokuapp.com/major/MySQLTuner-perl.svg)](https://starcharts.herokuapp.com/major/MySQLTuner-perl)
-
+	
 Compatibility
 ====
-
+Test result are avalaible here: [Travis CI/MySQLTuner-perl](https://travis-ci.org/major/MySQLTuner-perl)
+* MySQL 8 (partial support, password checks don't work)
 * MySQL 5.7 (full support)
 * MySQL 5.6 (full support)
-* MySQL 5.5 (full support)
 * MariaDB 10.3 (full support)
 * MariaDB 10.2 (full support)
 * MariaDB 10.1 (full support)
-* MariaDB 10.0 (full support)
+* MariaDB 10.0 (full support, 6 last month support)
 * Percona Server 5.7 (full support)
 * Percona Server 5.6 (full support)
 * Percona XtraDB cluster (full support)
-* MySQL 3.23, 4.0, 4.1, 5.0, 5.1 (partial support - deprecated version)
+* MySQL 3.23, 4.0, 4.1, 5.0, 5.1, 5.5 (partial support - deprecated version)
 * Perl 5.6 or later (with [perl-doc](http://search.cpan.org/~dapm/perl-5.14.4/pod/perldoc.pod) package)
 * Unix/Linux based operating system (tested on Linux, BSD variants, and Solaris variants)
 * Windows is not supported at this time (Help wanted !!!!!)
@@ -87,6 +87,13 @@ You can download the entire repository by using 'git clone' followed by the clon
 
 Of course, you can add the execute bit (`chmod +x mysqltuner.pl`) so you can execute it without calling perl directly.
 
+Performance tips
+--
+Metadata statistic updates can impact strongly performance of database servers and MySQLTuner.
+Be sure that innodb_stats_on_metadata is disabled.
+
+	set global innodb_stats_on_metadata = 0; 
+
 Specific usage
 --
 
@@ -101,7 +108,7 @@ __Usage:__ Minimal usage remotely
 __Usage:__ Enable maximum output information around MySQL/MariaDb without debugging
 
 	perl mysqltuner.pl --verbose
-	perl mysqltuner.pl --buffers --dbstat --idxstat --sysstat --pfstat
+	perl mysqltuner.pl --buffers --dbstat --idxstat --sysstat --pfstat --tbstat
 
 
 __Usage:__ Enable CVE vulnerabilities check for your MariaDB or MySQL version
