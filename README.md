@@ -61,6 +61,9 @@ that you trust.  **Always** test your changes on staging environments, and
 always keep in mind that improvements in one area can **negatively affect**
 MySQL in other areas.
 
+It's **also important** to wait at least a day of uptime to get accurate results. In fact, running
+**mysqltuner** on a fresh restarted server is completely useless.
+
 **Seriously - please review the FAQ section below.**
 
 
@@ -78,14 +81,17 @@ All checks done by **MySQLTuner** are documented in [MySQLTuner Internals](https
 Download/Installation
 --
 
-You can download the entire repository by using 'git clone' followed by the cloning URL above. The simplest and shortest method is:
+Choose one of these methods:
 
-	wget http://mysqltuner.pl/ -O mysqltuner.pl
-	wget https://raw.githubusercontent.com/major/MySQLTuner-perl/master/basic_passwords.txt -O basic_passwords.txt
-	wget https://raw.githubusercontent.com/major/MySQLTuner-perl/master/vulnerabilities.csv -O vulnerabilities.csv
-	perl mysqltuner.pl
+1) Script direct download (the simplest and shortest method):
 
-Of course, you can add the execute bit (`chmod +x mysqltuner.pl`) so you can execute it without calling perl directly.
+```
+wget http://mysqltuner.pl/ -O mysqltuner.pl
+wget https://raw.githubusercontent.com/major/MySQLTuner-perl/master/basic_passwords.txt -O basic_passwords.txt
+wget https://raw.githubusercontent.com/major/MySQLTuner-perl/master/vulnerabilities.csv -O vulnerabilities.csv
+```
+
+2) You can download the entire repository by using `git clone` or `git clone --depth 1 -b master` followed by the cloning URL above.
 
 Optional Sysschema installation for MySQL 5.6
 --
@@ -93,13 +99,13 @@ Optional Sysschema installation for MySQL 5.6
 Sysschema is installed by default under MySQL 5.7 and MySQL 8 from Oracle.
 By default, on MySQL 5.6/5.7/8, performance schema is enabled by default.
 For previous 5.6 version, you can follow this command to create a new database sys containing very useful view on Performance schema:
-	
+
 	curl "https://codeload.github.com/mysql/mysql-sys/zip/master" > sysschema.zip
 	# check zip file
 	unzip -l sysschema.zip
 	unzip sysschema.zip
 	cd mysql-sys-master
-	mysql -uroot -p < sys_56.sql 
+	mysql -uroot -p < sys_56.sql
 
 Optional Performance schema and Sysschema installation for MariaDB 10.x
 --
@@ -111,7 +117,7 @@ By default, on MariaDB, performance schema is disabled by default. consider acti
 	performance_schema = on
 
 You can follow this command to create a new database sys containing very useful view on Performance schema:
-	
+
 	curl "https://codeload.github.com/good-dba/mariadb-sys/zip/master" > mariadb-sys.zip
 	# check zip file
 	unzip -l mariadb-sys.zip
@@ -124,7 +130,7 @@ Performance tips
 Metadata statistic updates can impact strongly performance of database servers and MySQLTuner.
 Be sure that innodb_stats_on_metadata is disabled.
 
-	set global innodb_stats_on_metadata = 0; 
+	set global innodb_stats_on_metadata = 0;
 
 Specific usage
 --
@@ -132,6 +138,8 @@ Specific usage
 __Usage:__ Minimal usage locally
 
 	perl mysqltuner.pl
+
+Of course, you can add the execute bit (`chmod +x mysqltuner.pl`) so you can execute it without calling perl directly.
 
 __Usage:__ Minimal usage remotely
 
@@ -147,7 +155,7 @@ __Usage:__ Enable CVE vulnerabilities check for your MariaDB or MySQL version
 
 	perl mysqltuner.pl --cvefile=vulnerabilities.csv
 
-__Usage:__ Write your result in a file with information displayed  
+__Usage:__ Write your result in a file with information displayed
 
 	perl mysqltuner.pl --outputfile /tmp/result_mysqltuner.txt
 
@@ -180,7 +188,7 @@ The script will try its best to log in via any means possible.  It will check fo
 
 	[client]
 	user=someusername
-	pass=thatuserspassword
+	password=thatuserspassword
 
 Once you create it, make sure it's owned by your user and the mode on the file is 0600.  This should prevent the prying eyes from getting your database login credentials under normal conditions.  If a [T-1000 shows up in a LAPD uniform](https://en.wikipedia.org/wiki/T-1000) and demands your database credentials, you won't have much of an option.
 

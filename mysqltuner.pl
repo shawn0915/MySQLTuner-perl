@@ -1,10 +1,10 @@
 #!/usr/bin/env perl
-# mysqltuner.pl - Version 1.7.14
+# mysqltuner.pl - Version 1.7.15
 # High Performance MySQL Tuning Script
 # Copyright (C) 2006-2018 Major Hayden - major@mhtx.net
 #
 # For the latest updates, please visit http://mysqltuner.com/
-# Git repository available at http://github.com/major/MySQLTuner-perl
+# Git repository available at https://github.com/major/MySQLTuner-perl
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 # This project would not be possible without help from:
 #   Matthew Montgomery     Paul Kehrer          Dave Burgess
@@ -34,7 +34,7 @@
 #   Julien Francoz
 #
 # Inspired by Matthew Montgomery's tuning-primer.sh script:
-# http://forge.mysql.com/projects/view.php?id=44
+# http://www.day32.com/MySQL/
 #
 package main;
 
@@ -56,7 +56,7 @@ $Data::Dumper::Pair = " : ";
 #use Env;
 
 # Set up a few variables for use in the script
-my $tunerversion = "1.7.14";
+my $tunerversion = "1.7.15";
 my ( @adjvars, @generalrec );
 
 # Set defaults
@@ -1097,7 +1097,7 @@ sub get_all_vars {
     unless ( defined( $myvar{'innodb_support_xa'} ) ) {
         $myvar{'innodb_support_xa'} = 'ON';
     }
-
+    $mystat{'Uptime'} = 1 unless defined($mystat{'Uptime'}) and $mystat{'Uptime'}>0;
     $myvar{'have_galera'} = "NO";
     if (   defined( $myvar{'wsrep_provider_options'} )
         && $myvar{'wsrep_provider_options'} ne ""
@@ -1739,7 +1739,7 @@ sub security_recommendations {
     my $PASS_COLUMN_NAME = 'password';
     if ( $myvar{'version'} =~ /5\.7|10\..*MariaDB*/ ) {
         $PASS_COLUMN_NAME =
-"IF(plugin='mysql_native_password', authentication_string, 'password')";
+"IF(plugin='mysql_native_password', authentication_string, password)";
     }
     debugprint "Password column = $PASS_COLUMN_NAME";
 
@@ -3153,7 +3153,7 @@ sub mysql_stats {
             push( @generalrec,
                     "Read this before increasing "
                   . $table_cache_var
-                  . " over 64: http://bit.ly/1mi7c4C" );
+                  . " over 64: https://bit.ly/1mi7c4C" );
             push( @generalrec,
                     "Read this before increasing for MariaDB"
                   . " https://mariadb.com/kb/en/library/optimizing-table_open_cache/"
@@ -3504,7 +3504,7 @@ sub mysqsl_pfs {
         push( @generalrec,
 "Consider installing Sys schema from https://github.com/good-dba/mariadb-sys for MariaDB"
         ) unless ( mysql_version_eq( 10, 0 ) or  mysql_version_eq( 5, 5 )  );
-        
+
         return;
     }
     else {
@@ -5584,7 +5584,7 @@ sub mysql_innodb {
           . hr_bytes( $myvar{'innodb_log_file_size'} ) . " * "
           . $myvar{'innodb_log_files_in_group'} . "/"
           . hr_bytes( $myvar{'innodb_buffer_pool_size'} )
-          . " should be equal 25%";
+          . " should be equal to 25%";
         push(
             @adjvars,
             "innodb_log_file_size should be (="
@@ -5603,7 +5603,7 @@ sub mysql_innodb {
           . hr_bytes( $myvar{'innodb_log_file_size'} ) . " * "
           . $myvar{'innodb_log_files_in_group'} . "/"
           . hr_bytes( $myvar{'innodb_buffer_pool_size'} )
-          . " should be equal 25%";
+          . " should be equal to 25%";
     }
 
     # InnoDB Buffer Pool Instances (MySQL 5.6.6+)
@@ -6211,26 +6211,33 @@ sub dump_result {
 
     if ( $opt{'reportfile'} ne 0 ) {
         eval { require Text::Template };
+        eval { require JSON };
         if ($@) {
             badprint "Text::Template Module is needed.";
             die "Text::Template Module is needed.";
         }
 
-        my $vars = { 'data' => Dumper( \%result ) };
+        my $json = JSON->new->allow_nonref;
+        my $json_text   = $json->pretty->encode( \%result );
+        my %vars = (
+            'data' => \%result,
+            'debug' => $json_text,
+        );
         my $template;
         {
             no warnings 'once';
             $template = Text::Template->new(
                 TYPE    => 'STRING',
                 PREPEND => q{;},
-                SOURCE  => $templateModel
+                SOURCE  => $templateModel,
+                DELIMITERS => [ '[%', '%]' ]
             ) or die "Couldn't construct template: $Text::Template::ERROR";
         }
 
         open my $fh, q(>), $opt{'reportfile'}
           or die
 "Unable to open $opt{'reportfile'} in write mode. please check permissions for this file or directory";
-        $template->fill_in( HASH => $vars, OUTPUT => $fh );
+        $template->fill_in( HASH => \%vars, OUTPUT => $fh );
         close $fh;
     }
 
@@ -6329,7 +6336,7 @@ __END__
 
 =head1 NAME
 
- MySQLTuner 1.7.14 - MySQL High Performance Tuning Script
+ MySQLTuner 1.7.15 - MySQL High Performance Tuning Script
 
 =head1 IMPORTANT USAGE GUIDELINES
 
@@ -6382,7 +6389,6 @@ You must provide the remote server's total memory when connecting to other serve
  --pfstat                    Print Performance schema
  --nopfstat                  Don't Print Performance schema
  --verbose                   Prints out all options (default: no verbose, dbstat, idxstat, sysstat, tbstat, pfstat)
-  
  --bannedports               Ports banned separated by comma(,)
  --maxportallowed            Number of ports opened allowed on this hosts
  --cvefile <path>            CVE File for vulnerability checks
@@ -6573,7 +6579,7 @@ Copyright (C) 2006-2018 Major Hayden - major@mhtx.net
 
 For the latest updates, please visit http://mysqltuner.com/
 
-Git repository available at http://github.com/major/MySQLTuner-perl
+Git repository available at https://github.com/major/MySQLTuner-perl
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -6587,7 +6593,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  See the GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 =cut
 
